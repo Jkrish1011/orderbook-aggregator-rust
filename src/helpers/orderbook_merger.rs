@@ -1,7 +1,6 @@
 use rust_decimal::Decimal;
-use std::cmp::Reverse;
-use std::collections::BinaryHeap;
 use crate::helpers::types::{CoinbaseOrder, GeminiOrder, OrderBook};
+use log::{info};
 
 // Merge sorted asks from both coinbase and gemini. Ascending Order
 // Using iterator for efficiency here. Not collecting here.
@@ -110,21 +109,44 @@ pub fn merge_sorted_bids(coinbase_bids: Vec<CoinbaseOrder>, gemini_bids: Vec<Gem
     merged
 }
 
-pub fn calculate_entity_price(entity: &[OrderBook], quantity: Decimal) -> Decimal {
+pub fn calculate_entity_price(entity: &[OrderBook], quantity: Decimal) -> Result<Decimal, String> {
     let mut total_cost = Decimal::ZERO;
     let mut remaining_quantity = quantity;
+    let original_quantity = quantity;
+    let mut count = 0;
+    let mut total_size_available = Decimal::ZERO;
+
 
     for entry in entity.iter() {
-        if remaining_quantity < entry.size {
+        total_size_available += entry.size;
+    }
+
+    info!("Total Liquidity Available is : {}", total_size_available);
+
+    for entry in entity.iter() {
+
+        if entry.size == Decimal::ZERO {
+            info!("WARNING: Order at price {} has ZERO size!", entry.price);
+        }
+
+        if remaining_quantity <= entry.size {
             total_cost += entry.price * remaining_quantity;
+            count += 1;
             break;
         } else {
             total_cost += entry.price * entry.size;
             remaining_quantity -= entry.size;
         }
+        count += 1;
     }
 
-    total_cost
+    info!("Total orders processed: {}", count);
+
+    if remaining_quantity > Decimal::ZERO {
+        info!("Insufficient liquidity: requested {}, only {} available", original_quantity, original_quantity - remaining_quantity);
+    }
+
+    Ok(total_cost)
 }
 
 

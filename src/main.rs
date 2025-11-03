@@ -29,6 +29,7 @@ use helpers::{
     about = "This app helps you compute the quantity of BTC you can buy or sell",
     long_about = "This is a simple program to analyze the orderbook price and print the best bid and ask price"
 )]
+
 struct Args {
     /// Quantity
     #[arg(short, long, value_parser = parse_qty, default_value_t = 10.0)]
@@ -68,27 +69,40 @@ async fn main() -> Result<()>{
         data_fetcher::get_data(&client, gemini_api),
     );
 
-    let mut coinbase_data: CoinbaseResult = match result_coinbase {
+    let mut coinbase_data: Option<CoinbaseResult> = match result_coinbase {
         Ok(value) => {
             info!("Fetched Coinbase data successfull!");
-            from_value(value).unwrap()
+            match from_value(value) {
+                Ok(data) => Some(data),
+                Err(e) => None
+            }
         },
         Err(e) => {
             debug!("Error : {:?}", e);
-            return Err(e.into());
+            None
         }
     };
     
-    let mut gemini_data: GeminiResult = match result_gemini {
+    let mut gemini_data: Option<GeminiResult> = match result_gemini {
         Ok(value) => {
             info!("Fetched Gemini data successfull!");
-            from_value(value).unwrap()
+            match from_value(value) {
+                Ok(data) => Some(data),
+                Err(e) => None
+            }
         },
         Err(e) => {
             debug!("Error : {:?}", e);
-            return Err(e.into());
+            None
         }
     };
+
+    if coinbase_data.is_none() && gemini_data.is_none() {
+        return Err(anyhow::anyhow!("Failed to fetch data from Coinbase and Gemini. Quitting..!"));
+    }
+
+    let coinbase_data = coinbase_data.unwrap_or_default();
+    let gemini_data = gemini_data.unwrap_or_default();
 
     info!("Loaded the data successfully from Coinbase and Gemini");
     info!("Coinbase bids: {}, asks: {}", coinbase_data.bids.len(), coinbase_data.asks.len());
@@ -111,15 +125,15 @@ async fn main() -> Result<()>{
     // Calculate prices concurrently
     let qty = Decimal::from_f64_retain(args.qty).unwrap();
     let (buy_price, sell_price) = tokio::task::spawn_blocking(move || {
-        let buy = orderbook_merger::calculate_entity_price(&merged_bids, qty);
-        let sell = orderbook_merger::calculate_entity_price(&merged_asks, qty);
+        let buy = orderbook_merger::calculate_entity_price(&merged_asks, qty);  // Fixed!
+        let sell = orderbook_merger::calculate_entity_price(&merged_bids, qty); // Fixed!
         (buy, sell)
     })
     .await?;
 
     println!("--------------------------------");
-    let buy_val = buy_price.to_string().parse::<f64>().unwrap();
-    let sell_val = sell_price.to_string().parse::<f64>().unwrap();
+    let buy_val = buy_price.unwrap().to_string().parse::<f64>().unwrap();
+    let sell_val = sell_price.unwrap().to_string().parse::<f64>().unwrap();
     
     // Format with commas by converting to cents (integer), formatting, then adding decimal
     let buy_cents = (buy_val * 100.0).round() as i64;
@@ -131,6 +145,6 @@ async fn main() -> Result<()>{
     println!("To sell {} BTC: ${}.{:02}", args.qty, 
         (sell_cents / 100).to_formatted_string(&Locale::en), 
         sell_cents.abs() % 100);
-        
+
     Ok(())
 }

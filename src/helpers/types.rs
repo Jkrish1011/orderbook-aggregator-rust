@@ -15,6 +15,19 @@ pub struct CoinbaseResult {
     pub time: String
 }
 
+impl Default for CoinbaseResult {
+    fn default() -> Self {
+        Self {
+            bids: Vec::new(),
+            asks: Vec::new(),
+            sequence: 0,
+            auction_mode: false,
+            auction: None,
+            time: String::new(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct CoinbaseOrder {
     pub price: Decimal,
@@ -66,6 +79,15 @@ impl<'de> Deserialize<'de> for CoinbaseOrder {
 pub struct GeminiResult {
     pub bids: Vec<GeminiOrder>,
     pub asks: Vec<GeminiOrder>
+}
+
+impl Default for GeminiResult {
+    fn default() -> Self {
+        Self {
+            bids: Vec::new(),
+            asks: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
