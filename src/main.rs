@@ -5,12 +5,15 @@ use serde_json::from_value;
 use log::{info, debug};
 use env_logger;
 use anyhow::Result;
+use rust_decimal::Decimal;
+use num_format::{Locale, ToFormattedString};
 
 mod helpers;
 
 use helpers::{
     api_client, 
     data_fetcher, 
+    orderbook_merger,
     types::{
         CoinbaseResult,
         GeminiResult
@@ -75,7 +78,6 @@ async fn main() -> Result<()>{
             return Err(e.into());
         }
     };
-    info!("Total length of bids: {}", coinbase_data.bids.len());
     
     let mut gemini_data: GeminiResult = match result_gemini {
         Ok(value) => {
@@ -88,7 +90,47 @@ async fn main() -> Result<()>{
         }
     };
 
-    info!("Total length of bids: {}", gemini_data.bids.len());
+    info!("Loaded the data successfully from Coinbase and Gemini");
+    info!("Coinbase bids: {}, asks: {}", coinbase_data.bids.len(), coinbase_data.asks.len());
+    info!("Gemini bids: {}, asks: {}", gemini_data.bids.len(), gemini_data.asks.len());
+    info!("--------------------------------");
 
+    info!("Merging bids");
+
+        // Merge orderbooks concurrently
+    let (merged_asks, merged_bids) = tokio::task::spawn_blocking(move || {
+        let asks = orderbook_merger::merge_sorted_asks(coinbase_data.asks, gemini_data.asks);
+        let bids = orderbook_merger::merge_sorted_bids(coinbase_data.bids, gemini_data.bids);
+        (asks, bids)
+    })
+    .await?;
+
+    info!("Asks merged successfully! Total: {}", merged_asks.len());
+    info!("Bids merged successfully! Total: {}", merged_bids.len());
+
+    // Calculate prices concurrently
+    let qty = Decimal::from_f64_retain(args.qty).unwrap();
+    let (buy_price, sell_price) = tokio::task::spawn_blocking(move || {
+        let buy = orderbook_merger::calculate_entity_price(&merged_bids, qty);
+        let sell = orderbook_merger::calculate_entity_price(&merged_asks, qty);
+        (buy, sell)
+    })
+    .await?;
+
+    println!("--------------------------------");
+    let buy_val = buy_price.to_string().parse::<f64>().unwrap();
+    let sell_val = sell_price.to_string().parse::<f64>().unwrap();
+    
+    // Format with commas by converting to cents (integer), formatting, then adding decimal
+    let buy_cents = (buy_val * 100.0).round() as i64;
+    let sell_cents = (sell_val * 100.0).round() as i64;
+    
+    println!("To buy {} BTC: ${}.{:02}", args.qty, 
+        (buy_cents / 100).to_formatted_string(&Locale::en), 
+        buy_cents.abs() % 100);
+    println!("To sell {} BTC: ${}.{:02}", args.qty, 
+        (sell_cents / 100).to_formatted_string(&Locale::en), 
+        sell_cents.abs() % 100);
+        
     Ok(())
 }

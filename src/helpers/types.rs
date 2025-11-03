@@ -1,7 +1,9 @@
-
 use serde::Deserialize;
 use serde::de::{self, Deserializer, SeqAccess, Visitor};
 use std::fmt;
+use rust_decimal::Decimal;
+use std::str::FromStr;
+
 
 #[derive(Debug, Deserialize)]
 pub struct CoinbaseResult {
@@ -15,8 +17,8 @@ pub struct CoinbaseResult {
 
 #[derive(Debug)]
 pub struct CoinbaseOrder {
-    pub price: f64,
-    pub size: f64,
+    pub price: Decimal,
+    pub size: Decimal,
     pub num_orders: u64,
 }
 
@@ -48,9 +50,10 @@ impl<'de> Deserialize<'de> for CoinbaseOrder {
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(2, &self))?;
 
-                let price = price_str.parse::<f64>().map_err(de::Error::custom)?;
-                let size = size_str.parse::<f64>().map_err(de::Error::custom)?;
 
+                let price = Decimal::from_str(&price_str).map_err(de::Error::custom)?;
+                let size = Decimal::from_str(&size_str).map_err(de::Error::custom)?;
+    
                 Ok(CoinbaseOrder { price, size, num_orders })
             }
         }
@@ -67,14 +70,22 @@ pub struct GeminiResult {
 
 #[derive(Debug, Deserialize)]
 pub struct GeminiOrder {
-    #[serde(deserialize_with = "from_str_to_f64")]
-    pub price: f64,
+    #[serde(deserialize_with = "from_str_to_decimal")]
+    pub price: Decimal,
 
-    #[serde(deserialize_with = "from_str_to_f64")]
-    pub amount: f64,
+    #[serde(deserialize_with = "from_str_to_decimal")]
+    pub amount: Decimal,
 
     #[serde(deserialize_with = "from_str_to_u64")]
     pub timestamp: u64 
+}
+
+fn from_str_to_decimal<'de, D>(d: D) -> Result<Decimal, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(d)?;
+    Decimal::from_str(&s).map_err(de::Error::custom)
 }
 
 fn from_str_to_f64<'de, D>(d: D) -> Result<f64, D::Error>
@@ -91,4 +102,23 @@ where
 {
     let s = String::deserialize(d)?;
     s.parse::<u64>().map_err(de::Error::custom)
+}
+
+// Orderbook for Merged data
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderBook {
+    pub price: Decimal,
+    pub size: Decimal,
+}
+
+impl PartialOrd for OrderBook {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for OrderBook {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.price.cmp(&other.price)
+    }
 }
