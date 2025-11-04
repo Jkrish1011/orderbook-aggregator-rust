@@ -1,6 +1,10 @@
 use clap::{Parser};
 use dotenvy::dotenv;
-use std::{env};
+use std::{
+    env,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use serde_json::from_value;
 use log::{info, debug};
 use env_logger;
@@ -21,7 +25,8 @@ use helpers::{
     types::{
         CoinbaseResult,
         GeminiResult
-    }
+    },
+    rate_limiter::RateLimiter,
 };
 
 
@@ -69,12 +74,24 @@ async fn main() -> Result<()>{
     // Create a client to fetch the data from the APIs
     let client = api_client::create_client();
 
+    // Create a rate limiter
+    let rate_limiter = Arc::new(RateLimiter::new_per_interval(Duration::from_secs(2)));
+
+    let coinbase_rl = Arc::clone(&rate_limiter);
+    let gemini_rl = Arc::clone(&rate_limiter);
+
     info!("Fetching the Data from Coinbase and Gemini");
 
     // Fetch the entire dataset from the APIs
     let (result_coinbase, result_gemini) = tokio::join!(
-        get_data(&client, coinbase_api),
-        get_data(&client, gemini_api),
+        async {
+            coinbase_rl.acquire().await;
+            get_data(&client, coinbase_api).await
+        },
+        async {
+            gemini_rl.acquire().await;
+            get_data(&client, gemini_api).await
+        }
     );
 
     // Parse the data from the APIs
@@ -165,4 +182,53 @@ async fn main() -> Result<()>{
         sell_cents.abs() % 100);
 
     Ok(())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_rate_limiter() {
+        let rate_limiter = Arc::new(RateLimiter::new_per_interval(Duration::from_secs(2)));
+        let start = Instant::now();
+
+        // First call should succeed immediately
+        rate_limiter.acquire().await;
+        let first_call_time = start.elapsed();
+        assert!(first_call_time < Duration::from_millis(100), "First call should succeed quickly, took {:?}", first_call_time);
+
+        // Second call should be rate limited and wait ~2 seconds
+        let before_second = Instant::now();
+        rate_limiter.acquire().await;
+        let second_call_wait = before_second.elapsed();
+        assert!(second_call_wait >= Duration::from_secs(2) - Duration::from_millis(50), "Second call should wait at least ~2 seconds, waited {:?}", second_call_wait);
+        assert!(second_call_wait < Duration::from_secs(3), "Second call should not wait too long, waited {:?}", second_call_wait);
+
+        // Third call should also be rate limited
+        let before_third = Instant::now();
+        rate_limiter.acquire().await;
+        let third_call_wait = before_third.elapsed();
+        assert!(third_call_wait >= Duration::from_secs(2) - Duration::from_millis(50), "Third call should wait at least ~2 seconds, waited {:?}", third_call_wait);
+
+        // Total time for 3 calls should be at least 4 seconds (2s between each)
+        let total_time = start.elapsed();
+        assert!(total_time >= Duration::from_secs(4) - Duration::from_millis(100), "Total time for 3 calls should be at least ~4 seconds, took {:?}", total_time);
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter_2() {
+        let rate_limiter = Arc::new(RateLimiter::new_per_interval(Duration::from_secs(2)));
+
+        // First call should succeed
+        assert!(rate_limiter.try_acquire().await.is_ok(), "First call should succeed");
+
+        // Second call should fail immediately (non-blocking)
+        assert!(rate_limiter.try_acquire().await.is_err(), "Second call should fail immediately due to rate limit");
+
+        // After waiting 2 seconds, should succeed again
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        assert!(rate_limiter.try_acquire().await.is_ok(), "Call after 2 seconds should succeed");
+    }
 }
