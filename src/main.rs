@@ -12,8 +12,12 @@ mod helpers;
 
 use helpers::{
     api_client, 
-    data_fetcher, 
-    orderbook_merger,
+    data_fetcher::get_data, 
+    orderbook_merger::{
+        merge_sorted_asks,
+        merge_sorted_bids,
+        calculate_entity_price
+    },
     types::{
         CoinbaseResult,
         GeminiResult
@@ -46,6 +50,8 @@ fn parse_qty(s: &str) -> Result<String, String> {
     if v <= 0.0 {
         return Err("Value cannot be negative".into());
     }
+
+    // Not converting to Decimal inorder not to loose precision.
     Ok(s.to_string())
 }
 
@@ -60,16 +66,19 @@ async fn main() -> Result<()>{
     let coinbase_api = env::var("COINBASE_API").unwrap();
     let gemini_api = env::var("GEMINI_API").unwrap();
 
+    // Create a client to fetch the data from the APIs
     let client = api_client::create_client();
 
     info!("Fetching the Data from Coinbase and Gemini");
 
+    // Fetch the entire dataset from the APIs
     let (result_coinbase, result_gemini) = tokio::join!(
-        data_fetcher::get_data(&client, coinbase_api),
-        data_fetcher::get_data(&client, gemini_api),
+        get_data(&client, coinbase_api),
+        get_data(&client, gemini_api),
     );
 
-    let mut coinbase_data: Option<CoinbaseResult> = match result_coinbase {
+    // Parse the data from the APIs
+    let coinbase_data: Option<CoinbaseResult> = match result_coinbase {
         Ok(value) => {
             match from_value(value) {
                 Ok(data) => Some(data),
@@ -85,7 +94,7 @@ async fn main() -> Result<()>{
         }
     };
     
-    let mut gemini_data: Option<GeminiResult> = match result_gemini {
+    let gemini_data: Option<GeminiResult> = match result_gemini {
         Ok(value) => {
             match from_value(value) {
                 Ok(data) => Some(data),
@@ -101,10 +110,13 @@ async fn main() -> Result<()>{
         }
     };
 
+    // If both are None, return an error. Quitting..
     if coinbase_data.is_none() && gemini_data.is_none() {
         return Err(anyhow::anyhow!("Failed to fetch data from Coinbase and Gemini. Quitting..!"));
     }
 
+    // If either is None, use the other one. If both are Some, use both.
+    // The logic is designed to move ahead if either of them fails. 
     let coinbase_data = coinbase_data.unwrap_or_default();
     let gemini_data = gemini_data.unwrap_or_default();
 
@@ -115,10 +127,10 @@ async fn main() -> Result<()>{
 
     info!("Merging bids");
 
-        // Merge orderbooks concurrently
+    // Merge orderbooks 
     let (merged_asks, merged_bids) = tokio::task::spawn_blocking(move || {
-        let asks = orderbook_merger::merge_sorted_asks(coinbase_data.asks, gemini_data.asks);
-        let bids = orderbook_merger::merge_sorted_bids(coinbase_data.bids, gemini_data.bids);
+        let asks = merge_sorted_asks(coinbase_data.asks, gemini_data.asks);
+        let bids = merge_sorted_bids(coinbase_data.bids, gemini_data.bids);
         (asks, bids)
     })
     .await?;
@@ -126,11 +138,11 @@ async fn main() -> Result<()>{
     info!("Asks merged successfully! Total: {}", merged_asks.len());
     info!("Bids merged successfully! Total: {}", merged_bids.len());
 
-    // Calculate prices concurrently
+    // Calculate prices 
     let qty = Decimal::from_str_exact(&args.qty).unwrap();
     let (buy_price, sell_price) = tokio::task::spawn_blocking(move || {
-        let buy = orderbook_merger::calculate_entity_price(&merged_asks, qty, true, "ASKS"); // asks = ascending
-        let sell = orderbook_merger::calculate_entity_price(&merged_bids, qty, false, "BIDS"); // bids = descending
+        let buy = calculate_entity_price(&merged_asks, qty, true, "ASKS"); // asks = ascending
+        let sell = calculate_entity_price(&merged_bids, qty, false, "BIDS"); // bids = descending
         (buy, sell)
     })
     .await?;
