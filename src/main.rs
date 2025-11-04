@@ -32,21 +32,21 @@ use helpers::{
 
 struct Args {
     /// Quantity
-    #[arg(short, long, value_parser = parse_qty, default_value_t = 10.0)]
-    qty: f64,
+    #[arg(short, long, value_parser = parse_qty, default_value_t = String::from("10.0"))]
+    qty: String,
 }
 
-fn parse_qty(s: &str) -> Result<f64, String> {
+fn parse_qty(s: &str) -> Result<String, String> {
     let v: f64 = s.parse::<f64>().map_err(|e| format!("Not a valid quantity {}. Error : {}", s, e))?;
 
     if !v.is_finite() {
         return Err("Value must be finite".into());
     }
 
-    if v < 0.0 {
+    if v <= 0.0 {
         return Err("Value cannot be negative".into());
     }
-    Ok(v)
+    Ok(s.to_string())
 }
 
 #[tokio::main]
@@ -71,10 +71,12 @@ async fn main() -> Result<()>{
 
     let mut coinbase_data: Option<CoinbaseResult> = match result_coinbase {
         Ok(value) => {
-            info!("Fetched Coinbase data successfull!");
             match from_value(value) {
                 Ok(data) => Some(data),
-                Err(e) => None
+                Err(e) => {
+                    info!("Error fetching Coinbase data! Error: {:?}", e);
+                    None
+                }
             }
         },
         Err(e) => {
@@ -85,10 +87,12 @@ async fn main() -> Result<()>{
     
     let mut gemini_data: Option<GeminiResult> = match result_gemini {
         Ok(value) => {
-            info!("Fetched Gemini data successfull!");
             match from_value(value) {
                 Ok(data) => Some(data),
-                Err(e) => None
+                Err(e) => {
+                    info!("Error fetching Gemini data! Error: {:?}", e);
+                    None
+                }
             }
         },
         Err(e) => {
@@ -123,15 +127,17 @@ async fn main() -> Result<()>{
     info!("Bids merged successfully! Total: {}", merged_bids.len());
 
     // Calculate prices concurrently
-    let qty = Decimal::from_f64_retain(args.qty).unwrap();
+    let qty = Decimal::from_str_exact(&args.qty).unwrap();
     let (buy_price, sell_price) = tokio::task::spawn_blocking(move || {
-        let buy = orderbook_merger::calculate_entity_price(&merged_asks, qty);  // Fixed!
-        let sell = orderbook_merger::calculate_entity_price(&merged_bids, qty); // Fixed!
+        let buy = orderbook_merger::calculate_entity_price(&merged_asks, qty, true, "ASKS"); // asks = ascending
+        let sell = orderbook_merger::calculate_entity_price(&merged_bids, qty, false, "BIDS"); // bids = descending
         (buy, sell)
     })
     .await?;
 
     println!("--------------------------------");
+    info!("Buy Price : {:?}", buy_price);
+    info!("Sell Price : {:?}", sell_price);
     let buy_val = buy_price.unwrap().to_string().parse::<f64>().unwrap();
     let sell_val = sell_price.unwrap().to_string().parse::<f64>().unwrap();
     
