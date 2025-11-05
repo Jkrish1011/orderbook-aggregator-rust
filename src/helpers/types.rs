@@ -42,6 +42,9 @@ impl<'de> Deserialize<'de> for CoinbaseOrder {
         // Private struct to handle the deserialization logic!
         struct OrderVisitor;
 
+        // The OrderVisitor implements Visitor<'de>, meaning it can process data 
+        // that lives for the 'de lifetime
+        // The idea is to allow visitor to create references into the original input data
         impl<'de> Visitor<'de> for OrderVisitor {
             // Target type for deserialized value
             type Value = CoinbaseOrder;
@@ -54,7 +57,7 @@ impl<'de> Deserialize<'de> for CoinbaseOrder {
             // Handles the deserialization of a sequence (an array) into a CoinbaseOrder
             fn visit_seq<A>(self, mut seq: A) -> Result<CoinbaseOrder, A::Error>
             where
-                A: SeqAccess<'de>,
+                A: SeqAccess<'de>, // SeqAccess<'de> is a helper trait that provides sequential access to the data
             {
                 // Extracts the elements
                 let price_str: String = seq

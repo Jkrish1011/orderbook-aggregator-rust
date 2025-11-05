@@ -30,11 +30,9 @@ struct RateLimiterState {
 
 impl RateLimiter {
     // Creates a new rate limiter with the specified capacity and refill rate.
-    // 
     // # Arguments
     // * `capacity` - Maximum number of tokens (typically 1 for "once per interval")
     // * `tokens_per_second` - Rate at which tokens refill per second
-    // 
     // # Panics
     // Panics if capacity or tokens_per_second is <= 0
     pub fn new(capacity: Decimal, tokens_per_second: Decimal) -> Self {
@@ -68,10 +66,8 @@ impl RateLimiter {
     }
 
     // Attempts to acquire a token without blocking.
-    // 
     // Returns `Ok(())` if a token is available and consumed,
     // Returns `Err(RateLimitExceeded)` if no tokens are available.
-    // 
     // This method is non-blocking and updates the internal state
     // based on elapsed time since last update.
     pub async fn try_acquire(&self) -> Result<(), RateLimitExceeded> {
@@ -103,11 +99,9 @@ impl RateLimiter {
     }
 
     // Acquires a token, waiting asynchronously if necessary.
-    // 
     // This method will wait until a token becomes available.
     // Note: This uses `tokio::time::sleep` which yields to the executor
     // and doesn't block the OS thread, making it suitable for async code.
-    // 
     // If you need strictly non-blocking behavior, use `try_acquire` instead.
     pub async fn acquire(&self) {
         loop {
@@ -132,20 +126,19 @@ impl RateLimiter {
     }
 
     // Returns the current number of available tokens (approximate).
-    pub async fn available_tokens(&self) -> Decimal {
-        let mut state = self.state.lock().await;
+    // pub async fn available_tokens(&self) -> Decimal {
+    //     let mut state = self.state.lock().await;
+    //     // Update tokens based on elapsed time
+    //     let elapsed = state.last_update.elapsed();
+    //     let elapsed_secs = elapsed.as_secs_f64();
+    //     if elapsed_secs > 0.0 {
+    //         let elapsed_decimal = Decimal::from_str(&format!("{:.6}", elapsed_secs))
+    //             .unwrap_or(Decimal::ZERO);
+    //         let tokens_to_add = state.tokens_per_second * elapsed_decimal;
+    //         state.tokens = (state.tokens + tokens_to_add).min(state.capacity);
+    //         state.last_update = Instant::now();
+    //     }
         
-        // Update tokens based on elapsed time
-        let elapsed = state.last_update.elapsed();
-        let elapsed_secs = elapsed.as_secs_f64();
-        if elapsed_secs > 0.0 {
-            let elapsed_decimal = Decimal::from_str(&format!("{:.6}", elapsed_secs))
-                .unwrap_or(Decimal::ZERO);
-            let tokens_to_add = state.tokens_per_second * elapsed_decimal;
-            state.tokens = (state.tokens + tokens_to_add).min(state.capacity);
-            state.last_update = Instant::now();
-        }
-        
-        state.tokens
-    }
+    //     state.tokens
+    // }
 }
