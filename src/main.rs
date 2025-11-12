@@ -68,8 +68,8 @@ async fn main() -> Result<()>{
     let args = Args::parse();
     info!("Orderbook aggregator started");
 
-    let coinbase_api = env::var("COINBASE_API").unwrap();
-    let gemini_api = env::var("GEMINI_API").unwrap();
+    let coinbase_api: &str = &env::var("COINBASE_API").unwrap();
+    let gemini_api: &str = &env::var("GEMINI_API").unwrap();
 
     // Create a client to fetch the data from the APIs
     let client = api_client::create_client();
@@ -86,11 +86,11 @@ async fn main() -> Result<()>{
     let (result_coinbase, result_gemini) = tokio::join!(
         async {
             coinbase_rl.acquire().await;
-            get_data(&client, coinbase_api).await
+            get_data(&client, &coinbase_api).await
         },
         async {
             gemini_rl.acquire().await;
-            get_data(&client, gemini_api).await
+            get_data(&client, &gemini_api).await
         }
     );
 
