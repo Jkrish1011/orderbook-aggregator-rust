@@ -24,13 +24,15 @@ pub fn merge_sorted_asks(coinbase_asks: Vec<CoinbaseOrder>,gemini_asks: Vec<Gemi
                     let order = cb_iter.next().unwrap();
                     merged.push(OrderBook{
                         price: order.price,
-                        size: order.size
+                        size: order.size,
+                        name: "COINBASE".to_string()
                     });
                 } else {
                     let order = gem_iter.next().unwrap();
                     merged.push(OrderBook {
                         price: order.price,
                         size: order.amount,
+                        name: "GEMINI".to_string()
                     });
                 }
                 
@@ -41,6 +43,7 @@ pub fn merge_sorted_asks(coinbase_asks: Vec<CoinbaseOrder>,gemini_asks: Vec<Gemi
                     merged.push(OrderBook {
                         price: order.price,
                         size: order.size,
+                        name: "COINBASE".to_string()
                     });
                 }
                 break;
@@ -51,6 +54,7 @@ pub fn merge_sorted_asks(coinbase_asks: Vec<CoinbaseOrder>,gemini_asks: Vec<Gemi
                     merged.push(OrderBook {
                         price: order.price,
                         size: order.amount,
+                        name: "GEMINI".to_string()
                     });
                 }
                 break;
@@ -86,12 +90,14 @@ pub fn merge_sorted_bids(coinbase_bids: Vec<CoinbaseOrder>, gemini_bids: Vec<Gem
                     merged.push(OrderBook {
                         price: order.price,
                         size: order.size,
+                        name: "COINBASE".to_string()
                     });
                 } else {
                     let order = gem_iter.next().unwrap();
                     merged.push(OrderBook{
                         price: order.price,
                         size: order.amount,
+                        name: "GEMINI".to_string()
                     });
                 }
                 
@@ -102,6 +108,7 @@ pub fn merge_sorted_bids(coinbase_bids: Vec<CoinbaseOrder>, gemini_bids: Vec<Gem
                     merged.push(OrderBook {
                         price: order.price,
                         size: order.size,
+                        name: "COINBASE".to_string()
                     });
                 }
                 break;
@@ -112,6 +119,7 @@ pub fn merge_sorted_bids(coinbase_bids: Vec<CoinbaseOrder>, gemini_bids: Vec<Gem
                     merged.push(OrderBook {
                         price: order.price,
                         size: order.amount,
+                        name: "GEMINI".to_string()
                     });
                 }
                 break;
@@ -131,6 +139,10 @@ pub fn calculate_entity_price(entity: &[OrderBook], quantity: Decimal, is_ascend
     let mut count = 0;
     let mut total_size_available = Decimal::ZERO;
     let mut tiny_orders = 0;
+
+    let mut cb_count:Decimal = Decimal::ZERO;
+    let mut gm_count:Decimal = Decimal::ZERO;
+
 
     // Insignificant here. But just calculating very Tiny orders to identify any bugs of any sort.
     for entry in entity.iter() {
@@ -177,12 +189,24 @@ pub fn calculate_entity_price(entity: &[OrderBook], quantity: Decimal, is_ascend
         }
 
         if remaining_quantity <= entry.size {
+            if entry.name == "COINBASE".to_string() {
+                cb_count += remaining_quantity;
+            } else {
+                gm_count += remaining_quantity;
+            }
+
             // partial fill of the given order quantity
             total_cost += entry.price * remaining_quantity;
             count += 1;
             remaining_quantity = Decimal::ZERO; // To tackle the wrong firing of Insufficient Liquidity error.
             break;
         } else {
+            if entry.name == "COINBASE".to_string() {
+                cb_count += entry.size;
+            } else {
+                gm_count += entry.size;
+            }
+
             total_cost += entry.price * entry.size;
             remaining_quantity -= entry.size;
             count += 1;
@@ -202,6 +226,9 @@ pub fn calculate_entity_price(entity: &[OrderBook], quantity: Decimal, is_ascend
     if remaining_quantity > Decimal::ZERO {
         info!("Insufficient liquidity: requested {}, only {} available", original_quantity, original_quantity - remaining_quantity);
     }
+
+    println!("AMOUNT FROM COINBASE: {}", cb_count);
+    println!("AMOUNT FROM GEMINI: {}", gm_count);
 
     Ok(total_cost)
 }

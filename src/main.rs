@@ -29,6 +29,8 @@ use helpers::{
     rate_limiter::RateLimiter,
 };
 
+use crate::helpers::types::OrderBook;
+
 
 #[derive(Parser, Debug)]
 #[command(
@@ -154,6 +156,56 @@ async fn main() -> Result<()>{
 
     info!("Asks merged successfully! Total: {}", merged_asks.len());
     info!("Bids merged successfully! Total: {}", merged_bids.len());
+
+    // let cb_first_20 = &merged_asks[..20.min(merged_asks.len())];
+    // println!("{:?}", &cb_first_20);
+
+    // let cb_ff = merged_asks.iter().cloned().take(20).collect::<Vec<OrderBook>>();
+    // println!("{:?}", cb_ff);
+    // let mut index: usize = 0;
+    // println!("PRINTING TOP 20 ASKS");
+    // for (idx, ob) in merged_asks.iter().enumerate() {
+    //     println!("idx : {:?} | Price : {:?} | Exchange : {}", idx, &ob.price, &ob.name);
+
+    //     index+=1;
+
+    //     if index > 20 {
+    //         break;
+    //     }
+
+    // }
+
+    // index = 0;
+    // println!("PRINTING TOP 20 BIDS");
+    // for (idx, ob) in merged_bids.iter().enumerate() {
+    //     println!("idx : {:?} | Price : {:?} | Exchange: {}", idx, &ob.price, &ob.name);
+
+    //     index+=1;
+
+    //     if index > 20 {
+    //         break;
+    //     }
+
+    // }
+
+    // for i in [0..20] {
+        
+    //     println!("Merged Bids :: Index {} : {:?}", i, &merged_bids[i]);
+    // }
+
+    // for i in [0..20] {
+    //     println!("merged Asks :: Index  : {:?}", &coinbase_data.asks[i]);
+    // }
+
+    // for i in [0..20] {
+    //     println!("Gemini :: Index  : bid : {:?}", &coinbase_data.bids[i]);
+    // }
+
+    // for i in [0..20] {
+    //     println!("Gemini :: Index  : asks : {:?}", &coinbase_data.asks[i]);
+    // }
+
+
 
     // Calculate prices 
     let qty = Decimal::from_str_exact(&args.qty).unwrap();

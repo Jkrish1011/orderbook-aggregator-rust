@@ -144,6 +144,7 @@ where
 pub struct OrderBook {
     pub price: Decimal,
     pub size: Decimal,
+    pub name: String,
 }
 
 // Implementing PartialOrd for OrderBook
